@@ -2,6 +2,8 @@ package org.zephyr.hbase.tool.replication;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -18,6 +20,11 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
+import org.apache.hadoop.hbase.client.HTable;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.ResultScanner;
+import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.client.replication.ReplicationAdmin;
 import org.apache.hadoop.hbase.mapreduce.CopyTable;
 import org.apache.hadoop.hbase.replication.ReplicationException;
@@ -34,6 +41,8 @@ public class SyncHTable{
   private Configuration dstConf;
   private int numThreads = 3;
   private String peerId = "3";
+  private Map<byte[], List<byte[]>> regionKeys;
+  
   
   public void run (String[] args) throws Exception {
     parseArgs(args);
@@ -43,13 +52,22 @@ public class SyncHTable{
     srcCon = ConnectionFactory.createConnection(srcConf);
     srcAdmin = srcCon.getAdmin();
     dstCon = ConnectionFactory.createConnection(dstConf);
-    dstAdmin = srcCon.getAdmin();
+    dstAdmin = dstCon.getAdmin();
     
     HTableDescriptor[] tables = srcAdmin.listTables();
     Executor executor = Executors.newFixedThreadPool(numThreads);
     CountDownLatch latch = new CountDownLatch(tables.length);
     
     addPeerInSource();
+    
+    Table meta = srcCon.getTable(TableName.META_TABLE_NAME); 
+    Scan scan = new Scan();
+    ResultScanner results = meta.getScanner(scan);
+    
+    for (Result res : results) {
+      //TODO 
+      //Initiate variable regionKeys
+    }
     
     for (int i = 0; i < tables.length; i++) {
       executor.execute(new SyncTask(tables[i], latch));
@@ -115,6 +133,18 @@ public class SyncHTable{
     return false;
   }
   
+  byte[][] doPreSplit(HTableDescriptor htd) {
+    byte[][] splitKeys;
+    List<byte[]> rowKeys = regionKeys.get(htd.getNameAsString());
+    int numRegions = Math.min(rowKeys.size(), 30);
+    int interval = rowKeys.size() / numRegions;
+    splitKeys = new byte[numRegions][];
+    for (int i = interval - 1, j = 0; i < rowKeys.size(); i += interval) {
+      splitKeys[j++] = rowKeys.get(i);
+    }
+    return splitKeys;
+  }
+  
   private boolean createTableInSink (HTableDescriptor srcHtd) {
     HTableDescriptor htd = new HTableDescriptor(srcHtd);
     
@@ -125,7 +155,7 @@ public class SyncHTable{
     }
     
     try {
-      dstAdmin.createTable(htd);
+      dstAdmin.createTable(htd, doPreSplit(htd));
       return true;
     } catch (IOException e) {
       if (e instanceof TableExistsException) {
@@ -281,7 +311,7 @@ public class SyncHTable{
       if (createNamespaceInSink(namespace) && createTableInSink(htd)) {
         if (startReplication(htd)) {
           // Delay 1 minute for preventing loss of data.
-          // If copyTableEndPoint < replicationStartPoint, 
+          // If copyTableEndPoint less than replicationStartPoint, 
           // we may loss data in range [copyTableEndPoint, replicationStartPoint)
           long replicationStartPoint = System.currentTimeMillis();
           long copyTableEndPoint = replicationStartPoint + 1000 * 60;
