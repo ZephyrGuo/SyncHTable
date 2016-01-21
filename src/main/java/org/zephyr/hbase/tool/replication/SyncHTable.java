@@ -172,21 +172,24 @@ public class SyncHTable{
   }
   
   byte[][] doPreSplit(HTableDescriptor htd) {
-    byte[][] splitKeys;
     List<byte[]> rowKeys = regionKeys.get(htd.getNameAsString());
     int numRegions = Math.min(rowKeys.size(), 30);
     int interval = rowKeys.size() / numRegions;
-    splitKeys = new byte[numRegions][];
-    for (int i = interval - 1, j = 0; i < rowKeys.size(); i += interval) {
-      if (rowKeys.get(i) == null || Bytes.compareTo(HConstants.EMPTY_START_ROW, rowKeys.get(i)) == 0) continue;
-      splitKeys[j++] = rowKeys.get(i);
+    List<byte[]> splitKeys = new ArrayList<byte[]>();
+    for (int i = interval - 1; i < rowKeys.size(); i += interval) {
+      if (rowKeys.get(i) == null
+          || Bytes.compareTo(HConstants.EMPTY_START_ROW, rowKeys.get(i)) == 0) continue;
+      splitKeys.add(rowKeys.get(i));
     }
-    return splitKeys;
+    if (splitKeys.isEmpty()) {
+      return null;
+    }
+    return splitKeys.toArray(new byte[splitKeys.size()][]);
   }
   
   private boolean createTableInSink (HTableDescriptor srcHtd) {
     HTableDescriptor htd = new HTableDescriptor(srcHtd);
-    
+    LOG.info("Create table '" + htd.getNameAsString() + "'");
     // Close replication on backup table.
     for (HColumnDescriptor hcd : htd.getColumnFamilies()) {
       hcd.setScope(0);
