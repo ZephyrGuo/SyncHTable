@@ -3,6 +3,7 @@ package org.zephyr.hbase.tool.replication;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -42,7 +43,7 @@ public class SyncHTable{
   private Configuration dstConf;
   private int numThreads = 3;
   private String peerId = "3";
-  private Map<byte[], List<byte[]>> regionKeys;
+  private Map<String, List<byte[]>> regionKeys;
   
   
   public void run (String[] args) throws Exception {
@@ -69,11 +70,12 @@ public class SyncHTable{
     // Get starting row of region group by table name.
     Table meta = srcCon.getTable(TableName.META_TABLE_NAME); 
     Scan scan = new Scan();
-    ResultScanner results = meta.getScanner(scan);
+    ResultScanner results = meta.getScanner(scan);  
+    regionKeys = new HashMap<String,List<byte[]>>();
     
     for (Result res : results) {
       String row = Bytes.toString(res.getRow());
-      byte[] tb = parseTableName(row);
+      String tb = parseTableName(row);
       List<byte[]> list = regionKeys.get(tb);
       if (list == null) {
         list = new ArrayList<byte[]>();
@@ -90,9 +92,9 @@ public class SyncHTable{
     LOG.info("All synchronization task has finished.");
   }
   
-  private byte[] parseTableName(String metaRowKey) {
+  private String parseTableName(String metaRowKey) {
     int end = metaRowKey.indexOf(',');
-    return Bytes.toBytes(metaRowKey.substring(0, end));
+    return metaRowKey.substring(0, end);
   }
   
   private byte[] parseRegionStartRow(String metaRowKey){
