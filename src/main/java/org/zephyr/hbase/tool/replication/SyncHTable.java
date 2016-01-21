@@ -159,7 +159,9 @@ public class SyncHTable{
     args[3] = htd.getNameAsString();
       
     try {
-      return ToolRunner.run(new CopyTable(srcConf), args) == 0;
+      int res = ToolRunner.run(new CopyTable(srcConf), args);
+      if (res == 0) return true;
+      throw new Exception("CopyTable return " + res + ", not zero.");
     } catch (Exception e) {
       LOG.error("Copy " + htd.getNameAsString() + " has failed.", e);
     }
@@ -213,7 +215,7 @@ public class SyncHTable{
       if (e instanceof NamespaceExistException) {
         return true;
       }
-      LOG.error("Create namespace " + namespace + " has failed.", e);
+      LOG.error("Create namespace '" + namespace + "' has failed.", e);
     }
     return false;
   }
@@ -347,6 +349,7 @@ public class SyncHTable{
     SyncHTable sync = new SyncHTable();
     try {
       sync.run(args);
+      System.exit(0);
     } catch (Exception e) {
       LOG.error("Abort synchronization.", e);
     } finally {
@@ -356,6 +359,7 @@ public class SyncHTable{
         LOG.error("close hbase connection error.", e);
       }
     }
+    System.exit(1);
   }
   
   
@@ -380,7 +384,7 @@ public class SyncHTable{
           // we may loss data in range [copyTableEndPoint, replicationStartPoint)
           long replicationStartPoint = System.currentTimeMillis();
           long copyTableEndPoint = replicationStartPoint + 1000 * 60;
-          LOG.info("table:" + htd.getNameAsString() + ", start replication at "
+          LOG.info("table '" + htd.getNameAsString() + "', start replication at "
               + replicationStartPoint);
           
           copyTableFromSource(copyTableEndPoint, htd);
