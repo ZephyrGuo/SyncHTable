@@ -188,7 +188,12 @@ public class SyncHTable{
     }
     
     try {
-      dstAdmin.createTable(htd, doPreSplit(htd));
+      byte[][] splits = doPreSplit(htd);
+      if (splits == null || splits.length == 1){
+        dstAdmin.createTable(htd);
+      } else {
+        dstAdmin.createTable(htd, splits);
+      }
       return true;
     } catch (IOException e) {
       if (e instanceof TableExistsException) {
