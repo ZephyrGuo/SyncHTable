@@ -228,6 +228,7 @@ public class SyncHTable{
       }
       modifyTable(htd.getTableName(), htd);
       LOG.info("setup replication on table " + htd.getNameAsString());
+      return true;
     } catch (IOException e) {
       LOG.error("Start replication on table " + htd.getNameAsString() + " has failed.", e);
       // recover ColumnFamily
@@ -335,11 +336,25 @@ public class SyncHTable{
     return conf;
   }
   
+  public void close() throws IOException {
+    srcAdmin.close();
+    srcCon.close();
+    dstAdmin.close();
+    dstCon.close();
+  }
+  
   public static void main (String[] args){
+    SyncHTable sync = new SyncHTable();
     try {
-      new SyncHTable().run(args);
+      sync.run(args);
     } catch (Exception e) {
       LOG.error("Abort synchronization.", e);
+    } finally {
+      try {
+        sync.close();
+      } catch (IOException e) {
+        LOG.error("close hbase connection error.", e);
+      }
     }
   }
   
