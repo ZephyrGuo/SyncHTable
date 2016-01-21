@@ -2,6 +2,7 @@ package org.zephyr.hbase.tool.replication;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -20,7 +21,6 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
-import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
@@ -28,6 +28,7 @@ import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.client.replication.ReplicationAdmin;
 import org.apache.hadoop.hbase.mapreduce.CopyTable;
 import org.apache.hadoop.hbase.replication.ReplicationException;
+import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.util.ToolRunner;
 
 public class SyncHTable{
@@ -58,15 +59,27 @@ public class SyncHTable{
     Executor executor = Executors.newFixedThreadPool(numThreads);
     CountDownLatch latch = new CountDownLatch(tables.length);
     
+    LOG.info(tables.length + " tables will be synchronized.");
+    for (HTableDescriptor htd : tables) {
+      LOG.info(htd);
+    }
+    
     addPeerInSource();
     
+    // Get starting row of region group by table name.
     Table meta = srcCon.getTable(TableName.META_TABLE_NAME); 
     Scan scan = new Scan();
     ResultScanner results = meta.getScanner(scan);
     
     for (Result res : results) {
-      //TODO 
-      //Initiate variable regionKeys
+      String row = Bytes.toString(res.getRow());
+      byte[] tb = parseTableName(row);
+      List<byte[]> list = regionKeys.get(tb);
+      if (list == null) {
+        list = new ArrayList<byte[]>();
+        regionKeys.put(tb, list);
+      }
+      list.add(parseRegionStartRow(row));
     }
     
     for (int i = 0; i < tables.length; i++) {
@@ -77,7 +90,23 @@ public class SyncHTable{
     LOG.info("All synchronization task has finished.");
   }
   
+  private byte[] parseTableName(String metaRowKey) {
+    int end = metaRowKey.indexOf(',');
+    return Bytes.toBytes(metaRowKey.substring(0, end));
+  }
+  
+  private byte[] parseRegionStartRow(String metaRowKey){
+    int start = metaRowKey.indexOf(',') + 1;
+    int end = metaRowKey.indexOf(',', start);
+    return Bytes.toBytes(metaRowKey.substring(start, end));
+  }
+  
   private void parseArgs(String[] args) throws Exception{
+    
+    if (args == null) {
+      return;
+    }
+    
     for (int i = 0; i < args.length; i++) {
       String cmd = args[i];
       
@@ -272,6 +301,7 @@ public class SyncHTable{
         + dstConf.get("hbase.zookeeper.property.clientPort", "2181") + ":"
         + dstConf.get("zookeeper.znode.parent","/hbase");
     admin.addPeer(peerId, clusterId);
+    LOG.info("add peer {peer.id=" + peerId + ", clusterId=" + clusterId + "}");
   }
   
   private Configuration loadConf(String confName) throws IOException{
@@ -290,7 +320,7 @@ public class SyncHTable{
     try {
       new SyncHTable().run(args);
     } catch (Exception e) {
-      LOG.error("Abort synchronization", e);
+      LOG.error("Abort synchronization.", e);
     }
   }
   
@@ -307,6 +337,7 @@ public class SyncHTable{
     
     @Override
     public void run() {
+      LOG.info("start synchronize table '" + htd.getNameAsString() + "'");
       String namespace = htd.getTableName().getNameAsString();
       if (createNamespaceInSink(namespace) && createTableInSink(htd)) {
         if (startReplication(htd)) {
@@ -322,6 +353,7 @@ public class SyncHTable{
         }
       }
       latch.countDown();
+      LOG.info("Table '" + htd.getNameAsString() + "' synchronization is complete.");
     }
     
   }

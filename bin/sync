@@ -1,0 +1,7 @@
+#!/bin/bash
+
+BASE=$(cd `dirname $0`;pwd)
+CLASSPATH=.:$BASE/../target/SyncTable-1.0-SNAPSHOT.jar:$(hbase classpath)
+
+export CLASSPATH
+java org.zephyr.hbase.tool.replication.SyncHTable $@
