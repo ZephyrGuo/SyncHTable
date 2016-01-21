@@ -29,6 +29,7 @@ import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.client.replication.ReplicationAdmin;
 import org.apache.hadoop.hbase.mapreduce.CopyTable;
 import org.apache.hadoop.hbase.replication.ReplicationException;
+import org.apache.hadoop.hbase.replication.ReplicationPeerConfig;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.util.ToolRunner;
 
@@ -73,9 +74,10 @@ public class SyncHTable{
     ResultScanner results = meta.getScanner(scan);  
     regionKeys = new HashMap<String,List<byte[]>>();
     
-    for (Result res : results) {
+    for (Result res : results) {     
       String row = Bytes.toString(res.getRow());
       String tb = parseTableName(row);
+      
       List<byte[]> list = regionKeys.get(tb);
       if (list == null) {
         list = new ArrayList<byte[]>();
@@ -302,6 +304,15 @@ public class SyncHTable{
     String clusterId = dstConf.get("hbase.zookeeper.quorum") + ":" 
         + dstConf.get("hbase.zookeeper.property.clientPort", "2181") + ":"
         + dstConf.get("zookeeper.znode.parent","/hbase");
+    ReplicationPeerConfig peer = admin.getPeerConfig(peerId);
+    if (peer != null) {
+      LOG.info("Already exist {peer.id=" + peerId + ", clusterId=" + peer.getClusterKey() + "}");
+      if (clusterId.equals(peer.getClusterKey())) {
+        return;
+      } else {
+        LOG.info("peer.id=" + peerId + " already in use.");
+      }
+    }
     admin.addPeer(peerId, clusterId);
     LOG.info("add peer {peer.id=" + peerId + ", clusterId=" + clusterId + "}");
   }
