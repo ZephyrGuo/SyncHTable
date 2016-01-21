@@ -77,7 +77,7 @@ public class SyncHTable{
     for (Result res : results) {     
       String row = Bytes.toString(res.getRow());
       String tb = parseTableName(row);
-      
+      LOG.debug("scan meta row: " + row);
       List<byte[]> list = regionKeys.get(tb);
       if (list == null) {
         list = new ArrayList<byte[]>();
