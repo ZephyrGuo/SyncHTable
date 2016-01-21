@@ -23,15 +23,53 @@
 
 
 <configuration>
+  <property>
+      <name>hbase.tmp.dir</name>
+      <value>/home/guozehui/hbase520</value>
+  </property>
 
   <property>
-    <name>hbase.zookeeper.quorum</name>
-    <value>NM-ITC-NF8460M3-303-011</value>
+      <name>hbase.rootdir</name>
+      <value>file:/home/guozehui/hbase520/hbase</value>
+  </property>
+
+  <property>
+      <name>hbase.zookeeper.quorum</name>
+      <value>NM-ITC-NF8460M3-303-011</value>
+  </property>
+
+  <property>
+      <name>hbase.master.info.port</name>
+      <value>50520</value>
+  </property>
+
+  <property>
+      <name>hbase.master.port</name>
+      <value>60520</value>
+  </property>
+
+  <property>
+      <name>hbase.regionserver.info.port</name>
+      <value>50521</value>
+  </property>
+
+  <property>
+      <name>hbase.regionserver.port</name>
+      <value>60521</value>
   </property>
 
   <property>
       <name>hbase.zookeeper.property.clientPort</name>
       <value>60522</value>
+  </property>
+
+  <property>
+      <name>hbase.zookeeper.peerport</name>
+      <value>62888</value>
+  </property>
+  <property>
+      <name>hbase.zookeeper.leaderport</name>
+      <value>63888</value>
   </property>
 
 </configuration>
