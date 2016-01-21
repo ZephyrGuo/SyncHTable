@@ -200,6 +200,7 @@ public class SyncHTable{
   }
   
   private boolean createNamespaceInSink (String namespace) {
+    LOG.info("Create namespace " + namespace + " in sink hbase.");
     try {
       dstAdmin.createNamespace(NamespaceDescriptor.create(namespace).build());
       return true;
@@ -351,7 +352,7 @@ public class SyncHTable{
     @Override
     public void run() {
       LOG.info("start synchronize table '" + htd.getNameAsString() + "'");
-      String namespace = htd.getTableName().getNameAsString();
+      String namespace = htd.getTableName().getNamespaceAsString();
       if (createNamespaceInSink(namespace) && createTableInSink(htd)) {
         if (startReplication(htd)) {
           // Delay 1 minute for preventing loss of data.
