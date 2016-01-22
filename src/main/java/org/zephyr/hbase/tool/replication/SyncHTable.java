@@ -68,7 +68,7 @@ public class SyncHTable{
       LOG.info("in test mode");
       simulation = new SimulateMutateTable(srcCon);
       simulation.start();
-      Thread.sleep(5000); // Wait a while for putting data.
+      Thread.sleep(512); // Wait a while for putting data.
     }
     
     HTableDescriptor[] tables = isTest ? simulation.getTableList() : srcAdmin.listTables();
@@ -108,7 +108,7 @@ public class SyncHTable{
     LOG.info("All synchronization task has finished.");
     
     if (isTest) {
-      Thread.sleep(2000);
+      Thread.sleep(256);
     }
   }
   
@@ -391,6 +391,7 @@ public class SyncHTable{
   
   private boolean resultCompare(Result x, Result y) {
     if (x == y) return true;
+    if (x == null || y == null) return false;
     if (Bytes.compareTo(x.getRow(), y.getRow()) != 0) return false;
     while(x.advance()) {
       Cell c = x.current();
@@ -436,7 +437,7 @@ public class SyncHTable{
     } finally {
       try {
         sync.close();
-      } catch (IOException e) {
+      } catch (Exception e) {
         LOG.error("close hbase connection error.", e);
         exitCode = 1;
       }
