@@ -417,10 +417,11 @@ public class SyncHTable{
     return true;
   }
   
-  public void close() throws IOException {
+  public void close() throws IOException, InterruptedException {
     LOG.info("close client connection.");
     if (isTest) {
       simulation.stop();
+      Thread.sleep(5000); // Wait all done
       boolean res = false;
       try {
         res = compare();
