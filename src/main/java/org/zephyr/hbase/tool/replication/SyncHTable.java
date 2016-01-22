@@ -405,9 +405,11 @@ public class SyncHTable{
     if (y.isEmpty()) {
       LOG.info("get cell is empty");
     }
-    if (Bytes.compareTo(x.getRow(), y.getRow()) != 0) return false;
+    //if (Bytes.compareTo(x.getRow(), y.getRow()) != 0) return false;
     while(x.advance()) {
       Cell c = x.current();
+      LOG.info("Cell => " + Bytes.toString(CellUtil.cloneFamily(c)) + ":"
+          + Bytes.toString(CellUtil.cloneQualifier(c)));
       byte[] v = y.getValue(CellUtil.cloneFamily(c), CellUtil.cloneQualifier(c));
       if (v==null) return false;
       if (Bytes.compareTo(v, CellUtil.cloneValue(c)) != 0) return false;
