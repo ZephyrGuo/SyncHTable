@@ -421,7 +421,7 @@ public class SyncHTable{
       boolean res = false;
       try {
         res = compare();
-        if(res){
+        if(!res){
           LOG.error("Test finished, but there are some data different.");
         }else {
           LOG.info("Test successed.");
@@ -429,7 +429,7 @@ public class SyncHTable{
       } catch (IOException e) {
         LOG.error("compare broken.", e);       
       }
-      simulation.clear();
+      //simulation.clear();
     }
     srcAdmin.close();
     srcRepAdmin.close();
