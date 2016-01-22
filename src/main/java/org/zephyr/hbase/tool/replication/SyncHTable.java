@@ -383,7 +383,7 @@ public class SyncHTable{
       for (Result r : rs) {
         Get get = new Get(r.getRow());
         Result x = dtb.get(get);       
-        if (x == null || !resultCompare(x, r)) return false;
+        if (x == null || !resultCompare(r, x)) return false;
       }
     }
     return true;
@@ -427,19 +427,21 @@ public class SyncHTable{
   
   public static void main (String[] args){
     SyncHTable sync = new SyncHTable();
+    int exitCode = 0;
     try {
       sync.run(args);
-      System.exit(0);
     } catch (Exception e) {
       LOG.error("Abort synchronization.", e);
+      exitCode = 1;
     } finally {
       try {
         sync.close();
       } catch (IOException e) {
         LOG.error("close hbase connection error.", e);
+        exitCode = 1;
       }
-    }
-    System.exit(1);
+      System.exit(exitCode);
+    }   
   }
   
   

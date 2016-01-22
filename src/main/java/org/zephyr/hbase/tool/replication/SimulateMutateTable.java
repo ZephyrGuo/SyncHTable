@@ -33,6 +33,7 @@ public class SimulateMutateTable {
   private List<HTableDescriptor> tables = new LinkedList<HTableDescriptor>();
   
   public SimulateMutateTable(Connection con) throws IOException {
+    this.con = con;
     setup(con.getAdmin());
   }
   
@@ -81,10 +82,11 @@ public class SimulateMutateTable {
       Table table = null;
       try {        
         try {
-          if (TableName.valueOf(NAMESPACE, TABLE) == null) {
+          TableName tbn = TableName.valueOf(NAMESPACE, TABLE);
+          if (tbn == null) {
             LOG.info("############# why null?");
           }
-          table = con.getTable(TableName.valueOf(NAMESPACE, TABLE));
+          table = con.getTable(tbn);
         } catch (IOException e) {
           LOG.error("getTable has failed in " + name, e);
           return ;
