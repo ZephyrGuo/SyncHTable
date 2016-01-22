@@ -392,6 +392,18 @@ public class SyncHTable{
   private boolean resultCompare(Result x, Result y) {
     if (x == y) return true;
     if (x == null || y == null) return false;
+    if (x.getRow() == null) {
+      LOG.info("scan row is null");
+    }
+    if (x.isEmpty()) {
+      LOG.info("scan cell is empty");
+    }
+    if (y.getRow() == null) {
+      LOG.info("get row is null");
+    }
+    if (y.isEmpty()) {
+      LOG.info("get cell is empty");
+    }
     if (Bytes.compareTo(x.getRow(), y.getRow()) != 0) return false;
     while(x.advance()) {
       Cell c = x.current();
