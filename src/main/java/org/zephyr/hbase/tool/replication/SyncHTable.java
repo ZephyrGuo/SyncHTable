@@ -108,7 +108,7 @@ public class SyncHTable{
     LOG.info("All synchronization task has finished.");
     
     if (isTest) {
-      Thread.sleep(256);
+      Thread.sleep(512);
     }
   }
   

@@ -101,14 +101,14 @@ public class SimulateMutateTable {
             table.put(put);
           
             try {
-              Thread.sleep(rand.nextInt(64));
+              Thread.sleep(rand.nextInt(128));
             } catch (InterruptedException e) {
               LOG.warn(name + " sleep is interrupted.");
             }
             
             if (num % 2 == 0) {
               Delete del = new Delete(x);
-              del.addColumn(COLUMN, x);
+              //del.addColumn(COLUMN, x);
               table.delete(del);
             }
           } catch (IOException e) {
