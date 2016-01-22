@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -13,6 +14,7 @@ import java.util.concurrent.Executors;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HTableDescriptor;
@@ -23,6 +25,7 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
+import org.apache.hadoop.hbase.client.Get;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
@@ -46,8 +49,9 @@ public class SyncHTable{
   private Configuration dstConf;
   private int numThreads = 3;
   private String peerId = "3";
+  private boolean isTest = false;
   private Map<String, List<byte[]>> regionKeys;
-  
+  SimulateMutateTable simulation;
   
   public void run (String[] args) throws Exception {
     parseArgs(args);
@@ -59,7 +63,13 @@ public class SyncHTable{
     dstCon = ConnectionFactory.createConnection(dstConf);
     dstAdmin = dstCon.getAdmin();
     
-    HTableDescriptor[] tables = srcAdmin.listTables();
+    if (isTest) {
+      simulation = new SimulateMutateTable(srcCon);
+      simulation.start();
+      Thread.sleep(1000); // Wait a while for putting data.
+    }
+    
+    HTableDescriptor[] tables = isTest ? simulation.getTableList() : srcAdmin.listTables();
     Executor executor = Executors.newFixedThreadPool(numThreads);
     CountDownLatch latch = new CountDownLatch(tables.length);
     
@@ -94,6 +104,10 @@ public class SyncHTable{
     
     latch.await();
     LOG.info("All synchronization task has finished.");
+    
+    if (isTest) {
+      Thread.sleep(2000);
+    }
   }
   
   private String parseTableName(String metaRowKey) {
@@ -142,6 +156,11 @@ public class SyncHTable{
           LOG.error("Can't parse " + cmd + " ,parameter should be Short.");
           throw nfe;
         }
+      }
+      
+      String testKey = "--test";
+      if (cmd.startsWith(testKey)) {
+        isTest = true;
       }
     }
   }
@@ -351,7 +370,50 @@ public class SyncHTable{
     return conf;
   }
   
+  private boolean compare() throws IOException {
+    HTableDescriptor[] htds = simulation.getTableList();
+    for (HTableDescriptor htd : htds) {
+      Table tb = srcCon.getTable(htd.getTableName());
+      Scan scan = new Scan();
+      ResultScanner rs = tb.getScanner(scan);
+      Table dtb = dstCon.getTable(htd.getTableName());
+      for (Result r : rs) {
+        Get get = new Get(r.getRow());
+        Result x = dtb.get(get);       
+        if (x == null || !resultCompare(x, r)) return false;
+      }
+    }
+    return true;
+  }
+  
+  private boolean resultCompare(Result x, Result y) {
+    if (x == y) return true;
+    if (Bytes.compareTo(x.getRow(), y.getRow()) != 0) return false;
+    while(x.advance()) {
+      Cell c = x.current();
+      byte[] v = y.getValue(c.getFamily(), c.getQualifier());
+      if (v==null) return false;
+      if (Bytes.compareTo(v, c.getValue()) != 0) return false;
+    }
+    return true;
+  }
+  
   public void close() throws IOException {
+    if (isTest) {
+      simulation.stop();
+      boolean res = false;
+      try {
+        res = compare();
+        if(res){
+          LOG.error("Test finished, but there are some data different.");
+        }else {
+          LOG.info("Test successed.");
+        }
+      } catch (IOException e) {
+        LOG.error("compare broken.", e);       
+      }
+      simulation.clear();
+    }
     srcAdmin.close();
     srcRepAdmin.close();
     srcCon.close();
