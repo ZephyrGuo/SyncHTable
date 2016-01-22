@@ -79,17 +79,18 @@ public class SimulateMutateTable {
     @Override
     public void run() {
       Table table = null;
-      try {
-        table = con.getTable(TableName.valueOf(NAMESPACE, TABLE));
-      } catch (IOException e) {
-        LOG.error("getTable has failed in " + name, e);
-        return ;
-      }
+      try {        
+        try {
+          table = con.getTable(TableName.valueOf(NAMESPACE, TABLE));
+        } catch (IOException e) {
+          LOG.error("getTable has failed in " + name, e);
+          return ;
+        }
+        
+        LOG.info(name + " start.");
+        
+        Random rand = new Random();
       
-      LOG.info(name + " start.");
-      
-      Random rand = new Random();
-      try {
         while(run){
           int num = rand.nextInt(10000);
           byte[] x = Bytes.toBytes(String.format("%04d", num));

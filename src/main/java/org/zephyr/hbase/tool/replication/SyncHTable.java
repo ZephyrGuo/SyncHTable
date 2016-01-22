@@ -15,6 +15,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Cell;
+import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HTableDescriptor;
@@ -64,6 +65,7 @@ public class SyncHTable{
     dstAdmin = dstCon.getAdmin();
     
     if (isTest) {
+      LOG.info("in test mode");
       simulation = new SimulateMutateTable(srcCon);
       simulation.start();
       Thread.sleep(1000); // Wait a while for putting data.
@@ -391,9 +393,9 @@ public class SyncHTable{
     if (Bytes.compareTo(x.getRow(), y.getRow()) != 0) return false;
     while(x.advance()) {
       Cell c = x.current();
-      byte[] v = y.getValue(c.getFamily(), c.getQualifier());
+      byte[] v = y.getValue(CellUtil.cloneFamily(c), CellUtil.cloneQualifier(c));
       if (v==null) return false;
-      if (Bytes.compareTo(v, c.getValue()) != 0) return false;
+      if (Bytes.compareTo(v, CellUtil.cloneValue(c)) != 0) return false;
     }
     return true;
   }
