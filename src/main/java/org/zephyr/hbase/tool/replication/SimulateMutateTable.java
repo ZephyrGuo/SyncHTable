@@ -81,6 +81,9 @@ public class SimulateMutateTable {
       Table table = null;
       try {        
         try {
+          if (TableName.valueOf(NAMESPACE, TABLE) == null) {
+            LOG.info("############# why null?");
+          }
           table = con.getTable(TableName.valueOf(NAMESPACE, TABLE));
         } catch (IOException e) {
           LOG.error("getTable has failed in " + name, e);

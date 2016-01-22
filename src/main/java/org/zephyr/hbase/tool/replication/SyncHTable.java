@@ -68,7 +68,7 @@ public class SyncHTable{
       LOG.info("in test mode");
       simulation = new SimulateMutateTable(srcCon);
       simulation.start();
-      Thread.sleep(1000); // Wait a while for putting data.
+      Thread.sleep(5000); // Wait a while for putting data.
     }
     
     HTableDescriptor[] tables = isTest ? simulation.getTableList() : srcAdmin.listTables();
@@ -402,6 +402,7 @@ public class SyncHTable{
   }
   
   public void close() throws IOException {
+    LOG.info("close client connection.");
     if (isTest) {
       simulation.stop();
       boolean res = false;
