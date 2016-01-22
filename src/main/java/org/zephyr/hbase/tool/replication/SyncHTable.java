@@ -349,11 +349,12 @@ public class SyncHTable{
         + dstConf.get("zookeeper.znode.parent","/hbase");
     ReplicationPeerConfig peer = srcRepAdmin.getPeerConfig(peerId);
     if (peer != null) {
-      LOG.info("Already exist {peer.id=" + peerId + ", clusterId=" + peer.getClusterKey() + "}");
+      LOG.warn("Already exist {peer.id=" + peerId + ", clusterId=" + peer.getClusterKey() + "}");
       if (clusterId.equals(peer.getClusterKey())) {
+        LOG.info("Already exist peer.id=" + peerId + ", but clusterId is what we expected.");
         return;
       } else {
-        LOG.info("peer.id=" + peerId + " already in use.");
+        LOG.warn("peer.id=" + peerId + " already in use.");
       }
     }
     srcRepAdmin.addPeer(peerId, clusterId);

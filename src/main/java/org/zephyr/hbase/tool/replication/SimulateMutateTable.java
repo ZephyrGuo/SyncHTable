@@ -115,9 +115,11 @@ public class SimulateMutateTable {
             break;
           }
         }
+      } catch (RuntimeException e) {
+        LOG.error(name + " broken.", e);
       } finally {
         try {
-          table.close();
+          if (table != null) table.close();
         } catch (IOException e) {
           LOG.error("close table in " + name + " has failed.", e);
         }       
