@@ -1,7 +1,37 @@
 #!/bin/bash
 
-BASE=$(cd `dirname $0`;pwd)
-CLASSPATH=.:$BASE/../target/SyncTable-1.0-SNAPSHOT.jar:$(hbase classpath)
+
+HOME="$(cd `dirname $0`;pwd)/.."
+CONF=$HOME/conf
+LOG_DIR=$HOME/logs
+
+TOOL_JAR=$(ls $HOME/target | grep 'SyncHTable-.*\.jar')
+TOOL_JAR=$HOME/target/$TOOL_JAR
+if [ -z $TOOL_JAR ]; then
+	echo "Require $HOME/target/SyncHTable-VERSION.jar"
+	exit 1
+fi
+
+HBASE_CLASSPATH=$(hbase classpath)
+if [ -z "$HBASE_CLASSPATH" ]; then
+	if [ ! -e $HOME/lib ]; then
+		echo "Require hbase.We need to run command 'hbase classpath'"
+		exit 1
+	fi
+fi
+CLASSPATH=$CONF:$TOOL_JAR:$(hbase classpath)
+
+for f in $HOME/lib/*.jar
+do
+	CLASSPATH=$CLASSPATH:$f
+done
+
+JAVA=$JAVA_HOME/bin/java
+if [ -z $JAVA ]; then
+	echo "Require java runtime environment."
+fi
+
+JAVA_OPTS="-DSyncHTable.log=$LOG_DIR"
 
 export CLASSPATH
-java org.zephyr.hbase.tool.replication.SyncHTable $@
+$JAVA $JAVA_OPTS org.zephyr.hbase.tool.replication.SyncHTable $@

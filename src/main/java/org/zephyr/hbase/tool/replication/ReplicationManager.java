@@ -29,7 +29,7 @@ public class ReplicationManager {
   private final BufferedWriter writer;
   
   private ReplicationManager() throws IOException {
-    LOGPATH = System.getProperty("SyncTable.log", "./");
+    LOGPATH = System.getProperty("SyncHTable.log", "./");
     File logPath = new File(LOGPATH);
     if (!logPath.exists()) {
       logPath.mkdirs();
