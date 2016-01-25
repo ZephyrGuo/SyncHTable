@@ -128,7 +128,7 @@ public class SyncHTable{
           break;
         }
       }
-      if (find) filtered.add(htd);
+      if (!find) filtered.add(htd);
 
     }
     
@@ -428,7 +428,7 @@ public class SyncHTable{
       for (Result r : rs) {
         LOG.info("compare row:" + Bytes.toString(r.getRow()));
         Get get = new Get(r.getRow());
-        Result x = dtb.get(get);       
+        Result x = dtb.get(get);
         if (x == null || !resultCompare(r, x)) return false;
       }
     }
@@ -473,12 +473,13 @@ public class SyncHTable{
         if(!res){
           LOG.error("Test finished, but there are some data different.");
         }else {
-          LOG.info("Test successed.");
+          LOG.info("Test success.");
         }
       } catch (IOException e) {
-        LOG.error("compare broken.", e);       
+        LOG.error("TestTable compare broken.", e);       
       }
       simulation.clear(dstAdmin);
+      simulation.close();
     }
     srcAdmin.close();
     srcRepAdmin.close();

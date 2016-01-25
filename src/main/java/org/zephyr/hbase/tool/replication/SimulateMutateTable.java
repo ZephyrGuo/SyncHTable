@@ -55,11 +55,22 @@ public class SimulateMutateTable {
     run = false;
   }
   
-  public void clear(Admin dstAdmin) throws IOException {
-    admin.disableTable(TableName.valueOf(NAMESPACE, TABLE));
-    admin.deleteTable(TableName.valueOf(NAMESPACE, TABLE));
-    admin.deleteNamespace(NAMESPACE);
+  public void close() throws IOException {
     admin.close();
+  }
+  
+  public void clear(Admin dstAdmin) throws IOException {
+    TableName testTable = TableName.valueOf(NAMESPACE, TABLE);
+    if (dstAdmin.tableExists(testTable)) {
+      dstAdmin.disableTable(testTable);
+      dstAdmin.deleteTable(testTable);
+      dstAdmin.deleteNamespace(NAMESPACE);
+    }
+    if (admin.tableExists(testTable)) {
+      admin.disableTable(testTable);
+      admin.deleteTable(testTable);
+      admin.deleteNamespace(NAMESPACE);
+    }
   }
   
   public void start() {
