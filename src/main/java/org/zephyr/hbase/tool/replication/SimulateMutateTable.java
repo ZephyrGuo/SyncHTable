@@ -55,7 +55,7 @@ public class SimulateMutateTable {
     run = false;
   }
   
-  public void clear() throws IOException {
+  public void clear(Admin dstAdmin) throws IOException {
     admin.disableTable(TableName.valueOf(NAMESPACE, TABLE));
     admin.deleteTable(TableName.valueOf(NAMESPACE, TABLE));
     admin.deleteNamespace(NAMESPACE);

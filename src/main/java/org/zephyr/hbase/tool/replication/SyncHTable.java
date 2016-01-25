@@ -185,7 +185,11 @@ public class SyncHTable{
       
       String testKey = "--test";
       if (cmd.startsWith(testKey)) {
-        isTest = true;        
+        isTest = true;
+        String arg = cmd.substring(testKey.length());
+        if (arg != null && arg.equals("=no")) {
+          clearTestTable = false;
+        }
       }
     }
   }
@@ -474,7 +478,7 @@ public class SyncHTable{
       } catch (IOException e) {
         LOG.error("compare broken.", e);       
       }
-      //simulation.clear();
+      simulation.clear(dstAdmin);
     }
     srcAdmin.close();
     srcRepAdmin.close();
