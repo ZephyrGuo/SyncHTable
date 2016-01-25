@@ -93,8 +93,8 @@ public class SimulateMutateTable {
         Random rand = new Random();
       
         while(run){
-          int num = rand.nextInt(10000);
-          byte[] x = Bytes.toBytes(String.format("%04d", num));
+          int num = rand.nextInt(10000000);
+          byte[] x = Bytes.toBytes(String.format("%07d", num));
           Put put = new Put(x);
           put.addColumn(COLUMN, x, x);
           try {
