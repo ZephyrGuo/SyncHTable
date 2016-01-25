@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -13,7 +14,10 @@ import java.util.concurrent.Executors;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.Cell;
+import org.apache.hadoop.hbase.CellUtil;
 import org.apache.hadoop.hbase.HColumnDescriptor;
+import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
 import org.apache.hadoop.hbase.NamespaceExistException;
@@ -22,6 +26,7 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
+import org.apache.hadoop.hbase.client.Get;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
@@ -29,6 +34,7 @@ import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.client.replication.ReplicationAdmin;
 import org.apache.hadoop.hbase.mapreduce.CopyTable;
 import org.apache.hadoop.hbase.replication.ReplicationException;
+import org.apache.hadoop.hbase.replication.ReplicationPeerConfig;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.util.ToolRunner;
 
@@ -39,12 +45,14 @@ public class SyncHTable{
   private Connection srcCon;
   private Configuration srcConf;
   private Admin dstAdmin;
+  private ReplicationAdmin srcRepAdmin;
   private Connection dstCon;
   private Configuration dstConf;
   private int numThreads = 3;
   private String peerId = "3";
+  private boolean isTest = false;
   private Map<String, List<byte[]>> regionKeys;
-  
+  SimulateMutateTable simulation;
   
   public void run (String[] args) throws Exception {
     parseArgs(args);
@@ -56,7 +64,14 @@ public class SyncHTable{
     dstCon = ConnectionFactory.createConnection(dstConf);
     dstAdmin = dstCon.getAdmin();
     
-    HTableDescriptor[] tables = srcAdmin.listTables();
+    if (isTest) {
+      LOG.info("in test mode");
+      simulation = new SimulateMutateTable(srcCon);
+      simulation.start();
+      Thread.sleep(512); // Wait a while for putting data.
+    }
+    
+    HTableDescriptor[] tables = isTest ? simulation.getTableList() : srcAdmin.listTables();
     Executor executor = Executors.newFixedThreadPool(numThreads);
     CountDownLatch latch = new CountDownLatch(tables.length);
     
@@ -76,6 +91,7 @@ public class SyncHTable{
     for (Result res : results) {
       String row = Bytes.toString(res.getRow());
       String tb = parseTableName(row);
+      LOG.debug("scan meta row: " + row);
       List<byte[]> list = regionKeys.get(tb);
       if (list == null) {
         list = new ArrayList<byte[]>();
@@ -90,6 +106,10 @@ public class SyncHTable{
     
     latch.await();
     LOG.info("All synchronization task has finished.");
+    
+    if (isTest) {
+      Thread.sleep(512);
+    }
   }
   
   private String parseTableName(String metaRowKey) {
@@ -100,6 +120,7 @@ public class SyncHTable{
   private byte[] parseRegionStartRow(String metaRowKey){
     int start = metaRowKey.indexOf(',') + 1;
     int end = metaRowKey.indexOf(',', start);
+    if (end - start < 1) return HConstants.EMPTY_START_ROW;
     return Bytes.toBytes(metaRowKey.substring(start, end));
   }
   
@@ -138,6 +159,11 @@ public class SyncHTable{
           throw nfe;
         }
       }
+      
+      String testKey = "--test";
+      if (cmd.startsWith(testKey)) {
+        isTest = true;
+      }
     }
   }
   
@@ -157,7 +183,9 @@ public class SyncHTable{
     args[3] = htd.getNameAsString();
       
     try {
-      return ToolRunner.run(new CopyTable(srcConf), args) == 0;
+      int res = ToolRunner.run(new CopyTable(srcConf), args);
+      if (res == 0) return true;
+      throw new Exception("CopyTable return " + res + ", not zero.");
     } catch (Exception e) {
       LOG.error("Copy " + htd.getNameAsString() + " has failed.", e);
     }
@@ -165,20 +193,24 @@ public class SyncHTable{
   }
   
   byte[][] doPreSplit(HTableDescriptor htd) {
-    byte[][] splitKeys;
     List<byte[]> rowKeys = regionKeys.get(htd.getNameAsString());
     int numRegions = Math.min(rowKeys.size(), 30);
     int interval = rowKeys.size() / numRegions;
-    splitKeys = new byte[numRegions][];
-    for (int i = interval - 1, j = 0; i < rowKeys.size(); i += interval) {
-      splitKeys[j++] = rowKeys.get(i);
+    List<byte[]> splitKeys = new ArrayList<byte[]>();
+    for (int i = interval - 1; i < rowKeys.size(); i += interval) {
+      if (rowKeys.get(i) == null
+          || Bytes.compareTo(HConstants.EMPTY_START_ROW, rowKeys.get(i)) == 0) continue;
+      splitKeys.add(rowKeys.get(i));
     }
-    return splitKeys;
+    if (splitKeys.isEmpty()) {
+      return null;
+    }
+    return splitKeys.toArray(new byte[splitKeys.size()][]);
   }
   
   private boolean createTableInSink (HTableDescriptor srcHtd) {
     HTableDescriptor htd = new HTableDescriptor(srcHtd);
-    
+    LOG.info("Create table '" + htd.getNameAsString() + "'");
     // Close replication on backup table.
     for (HColumnDescriptor hcd : htd.getColumnFamilies()) {
       hcd.setScope(0);
@@ -186,7 +218,12 @@ public class SyncHTable{
     }
     
     try {
-      dstAdmin.createTable(htd, doPreSplit(htd));
+      byte[][] splits = doPreSplit(htd);
+      if (splits == null || splits.length < 1){
+        dstAdmin.createTable(htd);
+      } else {
+        dstAdmin.createTable(htd, splits);
+      }
       return true;
     } catch (IOException e) {
       if (e instanceof TableExistsException) {
@@ -198,6 +235,11 @@ public class SyncHTable{
   }
   
   private boolean createNamespaceInSink (String namespace) {
+    if (namespace.equals(NamespaceDescriptor.DEFAULT_NAMESPACE_NAME_STR)) {
+      return true;
+    }
+    
+    LOG.info("Create namespace " + namespace + " in sink hbase.");
     try {
       dstAdmin.createNamespace(NamespaceDescriptor.create(namespace).build());
       return true;
@@ -205,7 +247,7 @@ public class SyncHTable{
       if (e instanceof NamespaceExistException) {
         return true;
       }
-      LOG.error("Create namespace " + namespace + " has failed.", e);
+      LOG.error("Create namespace '" + namespace + "' has failed.", e);
     }
     return false;
   }
@@ -220,6 +262,7 @@ public class SyncHTable{
       }
       modifyTable(htd.getTableName(), htd);
       LOG.info("setup replication on table " + htd.getNameAsString());
+      return true;
     } catch (IOException e) {
       LOG.error("Start replication on table " + htd.getNameAsString() + " has failed.", e);
       // recover ColumnFamily
@@ -298,11 +341,23 @@ public class SyncHTable{
   }
   
   private void addPeerInSource () throws IOException, ReplicationException {
-    ReplicationAdmin admin = new ReplicationAdmin(srcConf);
+    if (srcRepAdmin == null) {
+      srcRepAdmin = new ReplicationAdmin(srcConf);
+    }
     String clusterId = dstConf.get("hbase.zookeeper.quorum") + ":" 
         + dstConf.get("hbase.zookeeper.property.clientPort", "2181") + ":"
         + dstConf.get("zookeeper.znode.parent","/hbase");
-    admin.addPeer(peerId, clusterId);
+    ReplicationPeerConfig peer = srcRepAdmin.getPeerConfig(peerId);
+    if (peer != null) {
+      LOG.warn("Already exist {peer.id=" + peerId + ", clusterId=" + peer.getClusterKey() + "}");
+      if (clusterId.equals(peer.getClusterKey())) {
+        LOG.info("Already exist peer.id=" + peerId + ", but clusterId is what we expected.");
+        return;
+      } else {
+        LOG.warn("peer.id=" + peerId + " already in use.");
+      }
+    }
+    srcRepAdmin.addPeer(peerId, clusterId);
     LOG.info("add peer {peer.id=" + peerId + ", clusterId=" + clusterId + "}");
   }
   
@@ -318,12 +373,92 @@ public class SyncHTable{
     return conf;
   }
   
+  private boolean compare() throws IOException {
+    HTableDescriptor[] htds = simulation.getTableList();
+    for (HTableDescriptor htd : htds) {
+      Table tb = srcCon.getTable(htd.getTableName());
+      Scan scan = new Scan();
+      ResultScanner rs = tb.getScanner(scan);
+      Table dtb = dstCon.getTable(htd.getTableName());
+      for (Result r : rs) {
+        LOG.info("compare row:" + Bytes.toString(r.getRow()));
+        Get get = new Get(r.getRow());
+        Result x = dtb.get(get);       
+        if (x == null || !resultCompare(r, x)) return false;
+      }
+    }
+    return true;
+  }
+  
+  private boolean resultCompare(Result x, Result y) {
+    if (x == y) return true;
+    if (x == null || y == null) return false;
+    if (x.getRow() == null) {
+      LOG.info("scan row is null");
+    }
+    if (x.isEmpty()) {
+      LOG.info("scan cell is empty");
+    }
+    if (y.getRow() == null) {
+      LOG.info("get row is null");
+    }
+    if (y.isEmpty()) {
+      LOG.info("get cell is empty");
+    }
+    //if (Bytes.compareTo(x.getRow(), y.getRow()) != 0) return false;
+    while(x.advance()) {
+      Cell c = x.current();
+      LOG.info("Cell => " + Bytes.toString(CellUtil.cloneFamily(c)) + ":"
+          + Bytes.toString(CellUtil.cloneQualifier(c)));
+      byte[] v = y.getValue(CellUtil.cloneFamily(c), CellUtil.cloneQualifier(c));
+      if (v==null) return false;
+      if (Bytes.compareTo(v, CellUtil.cloneValue(c)) != 0) return false;
+    }
+    return true;
+  }
+  
+  public void close() throws IOException, InterruptedException {
+    LOG.info("close client connection.");
+    if (isTest) {
+      simulation.stop();
+      Thread.sleep(5000); // Wait all done
+      boolean res = false;
+      try {
+        res = compare();
+        if(!res){
+          LOG.error("Test finished, but there are some data different.");
+        }else {
+          LOG.info("Test successed.");
+        }
+      } catch (IOException e) {
+        LOG.error("compare broken.", e);       
+      }
+      //simulation.clear();
+    }
+    srcAdmin.close();
+    srcRepAdmin.close();
+    srcCon.close();
+    dstAdmin.close();
+    dstCon.close();
+  }
+  
   public static void main (String[] args){
+    SyncHTable sync = new SyncHTable();
+    int exitCode = 0;
     try {
-      new SyncHTable().run(args);
+      sync.run(args);
     } catch (Exception e) {
       LOG.error("Abort synchronization.", e);
-    }
+      exitCode = 1;
+    } finally {
+      try {
+        sync.close();
+      } catch (Exception e) {
+        LOG.error("close hbase connection error.", e);
+        exitCode = 1;
+      }
+      System.exit(exitCode);
+    }   
   }
   
   
@@ -339,23 +474,28 @@ public class SyncHTable{
     
     @Override
     public void run() {
-      LOG.info("start synchronize table '" + htd.getNameAsString() + "'");
-      String namespace = htd.getTableName().getNameAsString();
-      if (createNamespaceInSink(namespace) && createTableInSink(htd)) {
-        if (startReplication(htd)) {
-          // Delay 1 minute for preventing loss of data.
-          // If copyTableEndPoint less than replicationStartPoint, 
-          // we may loss data in range [copyTableEndPoint, replicationStartPoint)
-          long replicationStartPoint = System.currentTimeMillis();
-          long copyTableEndPoint = replicationStartPoint + 1000 * 60;
-          LOG.info("table:" + htd.getNameAsString() + ", start replication at "
-              + replicationStartPoint);
-          
-          copyTableFromSource(copyTableEndPoint, htd);
+      try {
+        LOG.info("start synchronize table '" + htd.getNameAsString() + "'");
+        String namespace = htd.getTableName().getNamespaceAsString();
+        if (createNamespaceInSink(namespace) && createTableInSink(htd)) {
+          if (startReplication(htd)) {
+            // Delay 1 minute for preventing loss of data.
+            // If copyTableEndPoint less than replicationStartPoint, 
+            // we may loss data in range [copyTableEndPoint, replicationStartPoint)
+            long replicationStartPoint = System.currentTimeMillis();
+            long copyTableEndPoint = replicationStartPoint + 2000 * 60;
+            LOG.info("table '" + htd.getNameAsString() + "', start replication at "
+                + replicationStartPoint);
+            
+            copyTableFromSource(copyTableEndPoint, htd);
+          }
         }
+      } catch (RuntimeException e) {
+        LOG.error("Failed to sync table '" + htd.getNameAsString() + "'", e);
+      } finally {
+        latch.countDown();
+        LOG.info("table '" + htd.getNameAsString() + "' synchronization is complete.");
       }
-      latch.countDown();
-      LOG.info("Table '" + htd.getNameAsString() + "' synchronization is complete.");
     }
     
   }
