@@ -51,8 +51,10 @@ public class SyncHTable{
   private int numThreads = 3;
   private String peerId = "3";
   private boolean isTest = false;
+  private boolean clearTestTable = true;
   private Map<String, List<byte[]>> regionKeys;
-  SimulateMutateTable simulation;
+  private ReplicationManager repManager = ReplicationManager.create();
+  private SimulateMutateTable simulation;
   
   public void run (String[] args) throws Exception {
     parseArgs(args);
@@ -72,6 +74,8 @@ public class SyncHTable{
     }
     
     HTableDescriptor[] tables = isTest ? simulation.getTableList() : srcAdmin.listTables();
+    tables = filterTable(tables);
+    
     Executor executor = Executors.newFixedThreadPool(numThreads);
     CountDownLatch latch = new CountDownLatch(tables.length);
     
@@ -108,8 +112,27 @@ public class SyncHTable{
     LOG.info("All synchronization task has finished.");
     
     if (isTest) {
-      Thread.sleep(512);
+      Thread.sleep(1000);
     }
+  }
+  
+  private HTableDescriptor[] filterTable(HTableDescriptor[] tables) {
+    List<HTableDescriptor> filtered = new LinkedList<HTableDescriptor>();
+    List<TableName> success = repManager.listSuccessfulTables();
+
+    for (HTableDescriptor htd : tables) {
+      boolean find = false;
+      for (TableName tb : success) {
+        if (tb.equals(htd.getTableName())) {
+          find = true;
+          break;
+        }
+      }
+      if (find) filtered.add(htd);
+
+    }
+    
+    return filtered.toArray(new HTableDescriptor[filtered.size()]);
   }
   
   private String parseTableName(String metaRowKey) {
@@ -162,7 +185,7 @@ public class SyncHTable{
       
       String testKey = "--test";
       if (cmd.startsWith(testKey)) {
-        isTest = true;
+        isTest = true;        
       }
     }
   }
@@ -253,12 +276,30 @@ public class SyncHTable{
   }
   
   private boolean startReplication (HTableDescriptor htd) {
+    boolean alreadyStart = true;
+      
+    // In hbase-1.0.0 and early version, scope only 0 or 1.
+    // '1' means that replicate to all peers.
+    // If all families scope not equal 0, it is not necessary to  handle.
+    for (HColumnDescriptor hcd : htd.getColumnFamilies()) {
+      if (hcd.getScope() == 0) {
+        alreadyStart = false;
+        break;
+      }
+    }
+    
+    if (alreadyStart) {
+      return true;
+    }
+    
     HTableDescriptor backupHtd = new HTableDescriptor(htd);
     try {
       disableTable(htd.getTableName());      
       for (HColumnDescriptor hcd : htd.getColumnFamilies()) {
-        hcd.setScope(1);
-        htd.modifyFamily(hcd);
+        if (hcd.getScope() == 0) {
+          hcd.setScope(1);
+          htd.modifyFamily(hcd);
+        }
       }
       modifyTable(htd.getTableName(), htd);
       LOG.info("setup replication on table " + htd.getNameAsString());
@@ -475,11 +516,11 @@ public class SyncHTable{
     @Override
     public void run() {
       try {
-        LOG.info("start synchronize table '" + htd.getNameAsString() + "'");
+        LOG.info("Synchronize table '" + htd.getNameAsString() + "'");
         String namespace = htd.getTableName().getNamespaceAsString();
         if (createNamespaceInSink(namespace) && createTableInSink(htd)) {
           if (startReplication(htd)) {
-            // Delay 1 minute for preventing loss of data.
+            // Delay 2 minute for preventing loss of data.
             // If copyTableEndPoint less than replicationStartPoint, 
             // we may loss data in range [copyTableEndPoint, replicationStartPoint)
             long replicationStartPoint = System.currentTimeMillis();
@@ -487,10 +528,12 @@ public class SyncHTable{
             LOG.info("table '" + htd.getNameAsString() + "', start replication at "
                 + replicationStartPoint);
             
-            copyTableFromSource(copyTableEndPoint, htd);
+            if(copyTableFromSource(copyTableEndPoint, htd)) {
+              repManager.commitSuccessfulTable(htd.getTableName());
+            }
           }
         }
-      } catch (RuntimeException e) {
+      } catch (Exception e) {
         LOG.error("Failed to sync table '" + htd.getNameAsString() + "'", e);
       } finally {
         latch.countDown();
