@@ -486,6 +486,7 @@ public class SyncHTable{
     srcCon.close();
     dstAdmin.close();
     dstCon.close();
+    repManager.close();
   }
   
   public static void main (String[] args){

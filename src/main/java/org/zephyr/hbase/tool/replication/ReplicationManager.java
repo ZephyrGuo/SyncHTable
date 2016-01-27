@@ -20,7 +20,7 @@ import org.apache.hadoop.hbase.TableName;
  * 
  */
 public class ReplicationManager {
-  private static final Log LOG = LogFactory.getFactory().getLog(ReplicationManager.class);
+  private static final Log LOG = LogFactory.getLog(ReplicationManager.class);
   
   private final String LOGPATH;
   private final static String LOGFILE = "exclude-table";
@@ -55,12 +55,15 @@ public class ReplicationManager {
   public void commitSuccessfulTable(TableName tb) {   
     try {
       writer.write(tb.getNameWithNamespaceInclAsString());
+      writer.flush();
     } catch (IOException e) {
       LOG.warn("can't write '" + tb.getNameWithNamespaceInclAsString() + "' in " + LOGPATH + "/"
           + LOGFILE, e);
     }
   }
   
+  //TODO 
+  //The method can only run once. Should be improved.
   public List<TableName> listSuccessfulTables() {
     String namespace;
     String qualifier;
@@ -81,5 +84,10 @@ public class ReplicationManager {
       LOG.warn("can't read TableName from " + LOGPATH + "/" + LOGFILE, e);
     }
     return returnVal;
+  }
+  
+  public void close() throws IOException {
+    writer.close();
+    reader.close();
   }
 }
