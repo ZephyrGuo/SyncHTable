@@ -426,7 +426,7 @@ public class SyncHTable{
       ResultScanner rs = tb.getScanner(scan);
       Table dtb = dstCon.getTable(htd.getTableName());
       for (Result r : rs) {
-        LOG.info("compare row:" + Bytes.toString(r.getRow()));
+        LOG.debug("compare row:" + Bytes.toString(r.getRow()));
         Get get = new Get(r.getRow());
         Result x = dtb.get(get);
         if (x == null || !resultCompare(r, x)) return false;

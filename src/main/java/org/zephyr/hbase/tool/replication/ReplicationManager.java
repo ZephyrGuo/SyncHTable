@@ -54,7 +54,7 @@ public class ReplicationManager {
   
   public void commitSuccessfulTable(TableName tb) {   
     try {
-      writer.write(tb.getNameWithNamespaceInclAsString());
+      writer.write(tb.getNameWithNamespaceInclAsString() + "\n");
       writer.flush();
     } catch (IOException e) {
       LOG.warn("can't write '" + tb.getNameWithNamespaceInclAsString() + "' in " + LOGPATH + "/"
